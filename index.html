@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArbScout — Prediction Market Arbitrage</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+  <div class="app" id="app">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="logo">ARBSCOUT</span>
+        <div class="status-dot" id="statusDot"></div>
+        <span class="status-label" id="statusLabel">Ready</span>
+        <span class="mode-badge">PAPER TRADING</span>
+      </div>
+      <div class="topbar-right">
+        <button class="nav-btn active" onclick="showTab('opps')">Opportunities</button>
+        <button class="nav-btn" onclick="showTab('positions')">Positions</button>
+        <button class="nav-btn" onclick="showTab('log')">Agent Log</button>
+      </div>
+    </div>
+
+    <!-- METRICS ROW -->
+    <div class="metrics-row">
+      <div class="metric">
+        <span class="metric-label">Paper P&amp;L</span>
+        <span class="metric-value up" id="pnl">+$0.00</span>
+        <span class="metric-change neutral" id="pnlChange">0 trades</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Open Positions</span>
+        <span class="metric-value" id="openPos">0</span>
+        <span class="metric-change neutral">paper</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Markets Scanned</span>
+        <span class="metric-value" id="scanned">0</span>
+        <span class="metric-change neutral" id="scannedPlatforms">—</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Opportunities</span>
+        <span class="metric-value" id="oppCount">0</span>
+        <span class="metric-change neutral">found today</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Avg Identity Score</span>
+        <span class="metric-value" id="avgId">—</span>
+        <span class="metric-change neutral">match quality</span>
+      </div>
+    </div>
+
+    <!-- OPPORTUNITIES TAB -->
+    <div id="tabOpps">
+      <div class="main">
+        <!-- LEFT: opportunity list -->
+        <div class="left-panel">
+          <div class="panel-header">
+            <span class="panel-title">Live Opportunities</span>
+            <button class="scan-btn" id="scanBtn" onclick="runScan()">
+              <span id="scanIcon">⟳</span> Scan markets
+            </button>
+          </div>
+          <div class="opps-list" id="oppsList">
+            <div class="empty-state">
+              Click <strong>Scan markets</strong> to start<br />the multi-agent scanner.
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: detail pane -->
+        <div class="right-panel">
+          <div class="panel-header">
+            <span class="panel-title" id="detailTitle">Detail view</span>
+          </div>
+          <div id="detailPane">
+            <div class="detail-empty">
+              Select an opportunity<br />to analyse clauses,<br />risk, and identity score.
+            </div>
+          </div>
+          <div class="action-row" id="actionRow" style="display:none">
+            <button class="action-btn" onclick="analyseDeep()">Deep analyse ↗</button>
+            <button class="action-btn primary" id="executeBtn" onclick="executeTrade()">Paper trade</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AGENT LOG (mini) -->
+      <div class="log-panel">
+        <div class="panel-header">
+          <span class="panel-title">Agent log</span>
+        </div>
+        <div class="log-list" id="logList">
+          <div class="log-entry">
+            <span class="log-time">—</span>
+            <span>ArbScout ready. Click Scan to begin.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- POSITIONS TAB -->
+    <div id="tabPositions" style="display:none; padding:14px">
+      <div class="panel-header" style="margin:-14px -14px 14px; padding:8px 14px">
+        <span class="panel-title">Paper Positions</span>
+        <span class="status-label" id="posCount">0 open</span>
+      </div>
+      <div id="positionsContent">
+        <div class="empty-state">No paper trades placed yet.</div>
+      </div>
+    </div>
+
+    <!-- LOG TAB -->
+    <div id="tabLog" style="display:none; padding:14px">
+      <div class="panel-header" style="margin:-14px -14px 14px; padding:8px 14px">
+        <span class="panel-title">Full Agent Log</span>
+      </div>
+      <div id="fullLog" style="font-size:12px; line-height:2; color:#888">
+        No agent activity yet.
+      </div>
+    </div>
+
+    <!-- CONFIRM MODAL -->
+    <div id="modalOverlay" class="modal-overlay" style="display:none">
+      <div class="modal">
+        <div class="modal-title" id="modalTitle">Confirm paper trade</div>
+        <div class="modal-body" id="modalBody">—</div>
+        <div class="modal-btns">
+          <button class="action-btn" onclick="closeModal()">Cancel</button>
+          <button class="action-btn primary" onclick="confirmTrade()">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.app -->
+
+  <script src="src/markets.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
