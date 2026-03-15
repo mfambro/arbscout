@@ -1,51 +1,45 @@
 /**
- * app.js — Application state, agent orchestration, and event wiring.
- *
- * Paper-trading mode: all trades are simulated, no real API calls.
- * To go live:
- *   1. Implement src/api/{platform}.js with fetchMarkets() / placeBet()
- *   2. Replace SEED_MARKETS in runScan() with real API calls
- *   3. Replace doExecuteTrade() stub with real order placement
+ * app.js — Application state, agent orchestration, event wiring.
  */
 
-/* ── App state ── */
 const STATE = {
-  opps:         [],
+  opps:         [],       // all loaded markets (future-only)
+  filteredOpps: null,     // null = show all; array = filtered by time window
   selectedId:   null,
-  positions:    [],
-  pnl:          0,
-  tradesCount:  0,
+  positions:    [],       // open + closed
   scannedCount: 0,
   scanning:     false,
   pendingTrade: null,
+  timeWindowIdx: 0,       // index into Engine.TIME_WINDOWS
 };
 
-/* ── Agents ── */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-/**
- * ScanAgent — simulates fetching markets from all platforms.
- * Replace the body of this function with real API calls when going live.
- */
+/* ── ScanAgent ── */
 async function ScanAgent() {
   UI.addLog('ScanAgent → fetching Polymarket, Kalshi, Manifold, Metaculus, PredictIt', 'info');
   await sleep(550);
+  UI.addLog('ClauseAgent → parsing resolution conditions', 'info');
+  await sleep(430);
+  UI.addLog('IdentityAgent → comparing resolution logic, oracles, payouts', 'info');
+  await sleep(380);
+  UI.addLog('SpreadAgent → computing net spreads after fees', 'info');
+  await sleep(380);
 
-  UI.addLog('ClauseAgent → parsing resolution conditions for ' + SEED_MARKETS.length + ' matched markets', 'info');
-  await sleep(480);
+  // Filter to only open (future) markets before returning
+  const open = SEED_MARKETS.filter(Engine.isOpenMarket);
+  return { markets: open, scanned: 847, platforms: '5 platforms' };
+}
 
-  UI.addLog('IdentityAgent → comparing resolution logic, oracles, payouts across platforms', 'info');
-  await sleep(420);
-
-  UI.addLog('SpreadAgent → computing net spreads after platform fees', 'info');
-  await sleep(420);
-
-  return {
-    markets: SEED_MARKETS,
-    scanned: 847,
-    platforms: '5 platforms',
-  };
+/* ── applyTimeWindow ── */
+function applyTimeWindow(idxStr) {
+  STATE.timeWindowIdx = parseInt(idxStr, 10);
+  const hours = Engine.TIME_WINDOWS[STATE.timeWindowIdx].hours;
+  STATE.filteredOpps = isFinite(hours)
+    ? Engine.filterByWindow(STATE.opps, hours)
+    : null;
+  UI.renderOpps(STATE, selectOpp);
+  UI.updateMetrics(STATE);
 }
 
 /* ── runScan ── */
@@ -57,33 +51,34 @@ async function runScan() {
   document.getElementById('oppsList').innerHTML = `
     <div class="empty-state">
       <div class="spinner" style="width:16px;height:16px;margin:0 auto 10px"></div>
-      Agents scanning Polymarket, Kalshi, Manifold…
+      Agents scanning markets…
     </div>`;
 
   const result = await ScanAgent();
-
   STATE.opps = result.markets;
   STATE.scannedCount = result.scanned;
   document.getElementById('scannedPlatforms').textContent = result.platforms;
 
-  UI.addLog(`Found ${STATE.opps.length} opportunities from ${STATE.scannedCount} markets scanned`, 'success');
+  // Re-apply window filter
+  const hours = Engine.TIME_WINDOWS[STATE.timeWindowIdx].hours;
+  STATE.filteredOpps = isFinite(hours) ? Engine.filterByWindow(STATE.opps, hours) : null;
+
+  const visible = STATE.filteredOpps ?? STATE.opps;
+  UI.addLog(`Found ${STATE.opps.length} open markets (${visible.length} in window)`, 'success');
 
   STATE.opps.forEach(o => {
     const sp = Engine.calcSpread(o);
     const id = Engine.calcIdentity(o);
     if (sp.maxProfit > 0) {
       UI.addLog(
-        `${o.title.substring(0, 42)}… — spread +${(sp.maxProfit * 100).toFixed(2)}¢, identity ${Math.round(id * 100)}%`,
+        `${o.title.substring(0,42)}… — +${(sp.maxProfit*100).toFixed(2)}¢ spread, identity ${Math.round(id*100)}%, closes ${Engine.formatCountdown(o)}`,
         'success'
       );
-    } else {
-      UI.addLog(`${o.title.substring(0, 42)}… — no positive spread found`, 'warn');
     }
   });
 
   UI.renderOpps(STATE, selectOpp);
   UI.updateMetrics(STATE);
-
   STATE.scanning = false;
   UI.setScanBusy(false);
 }
@@ -91,22 +86,16 @@ async function runScan() {
 /* ── selectOpp ── */
 function selectOpp(id) {
   STATE.selectedId = id;
-
-  // re-highlight rows
   document.querySelectorAll('.opp-row').forEach(r => r.classList.remove('selected'));
   const row = document.getElementById('opp-' + id);
   if (row) row.classList.add('selected');
-
   const opp = STATE.opps.find(o => o.id === id);
   UI.renderDetail(opp, STATE);
-
-  // reset execute button
   const btn = document.getElementById('executeBtn');
-  btn.textContent = 'Paper trade';
-  btn.disabled = false;
+  if (btn) { btn.textContent = 'Paper trade'; btn.disabled = false; }
 }
 
-/* ── analyseDeep — sends prompt to Claude for deep risk analysis ── */
+/* ── analyseDeep ── */
 function analyseDeep() {
   const opp = STATE.opps.find(o => o.id === STATE.selectedId);
   if (!opp) return;
@@ -114,17 +103,17 @@ function analyseDeep() {
   const id = Engine.calcIdentity(opp);
   const prompt =
     `I'm analysing a prediction market arbitrage opportunity: "${opp.title}". ` +
-    `Spread: +${(sp.maxProfit * 100).toFixed(2)}¢/$1 (buy on ${PLATFORMS[sp.buyPlat]?.name}, sell on ${PLATFORMS[sp.sellPlat]?.name}). ` +
-    `Identity score: ${Math.round(id * 100)}%. ` +
+    `Closes in ${Engine.formatCountdown(opp)}. ` +
+    `Spread: +${(sp.maxProfit*100).toFixed(2)}¢/$1 ` +
+    `(buy on ${PLATFORMS[sp.buyPlat]?.name}, sell on ${PLATFORMS[sp.sellPlat]?.name}). ` +
+    `Identity: ${Math.round(id*100)}%. ` +
     `Clause flags: ${opp.clauseFlags?.join('; ') ?? 'none'}. ` +
-    `Please give a detailed risk assessment, identify any hidden risks in the clauses, and recommend whether to execute.`;
+    `Give a detailed risk assessment and recommend whether to execute.`;
 
-  // In browser: open Claude.ai with pre-filled prompt
-  if (typeof window !== 'undefined' && !window.sendPrompt) {
-    const url = 'https://claude.ai/new?q=' + encodeURIComponent(prompt);
-    window.open(url, '_blank');
-  } else if (window.sendPrompt) {
+  if (window.sendPrompt) {
     window.sendPrompt(prompt);
+  } else {
+    window.open('https://claude.ai/new?q=' + encodeURIComponent(prompt), '_blank');
   }
 }
 
@@ -132,37 +121,29 @@ function analyseDeep() {
 function executeTrade() {
   const opp = STATE.opps.find(o => o.id === STATE.selectedId);
   if (!opp) return;
-
   const id = Engine.calcIdentity(opp);
-
   if (id < 0.60) {
     STATE.pendingTrade = opp;
     UI.showModal(
       '⚠ Low identity score',
-      `Identity score is only ${Math.round(id * 100)}%. The resolution conditions on these platforms ` +
-      `may differ significantly — this is NOT a clean arbitrage. Are you sure you want to paper trade this?`
+      `Identity is only ${Math.round(id*100)}%. Resolution conditions may differ significantly — this is not a clean arbitrage. Proceed with paper trade?`
     );
     return;
   }
-
   doExecuteTrade(opp);
 }
 
 function confirmTrade() {
   UI.closeModal();
-  if (STATE.pendingTrade) {
-    doExecuteTrade(STATE.pendingTrade);
-    STATE.pendingTrade = null;
-  }
+  if (STATE.pendingTrade) { doExecuteTrade(STATE.pendingTrade); STATE.pendingTrade = null; }
 }
 
 function doExecuteTrade(opp) {
   const sp    = Engine.calcSpread(opp);
   const id    = Engine.calcIdentity(opp);
   const stake = 100;
-  const expectedPnl = +(sp.maxProfit * stake).toFixed(2);
 
-  const position = {
+  STATE.positions.push({
     id:          'pos-' + Date.now(),
     market:      opp.title,
     buyPlat:     PLATFORMS[sp.buyPlat]?.name  ?? sp.buyPlat,
@@ -171,19 +152,14 @@ function doExecuteTrade(opp) {
     buyPrice:    sp.buyPrice,
     sellPrice:   sp.sellPrice,
     stake,
-    expectedPnl,
+    expectedPnl: +(sp.maxProfit * stake).toFixed(2),
     identity:    id,
     status:      'open',
     openedAt:    new Date().toLocaleTimeString(),
-  };
-
-  STATE.positions.push(position);
-  STATE.pnl         += expectedPnl;
-  STATE.tradesCount += 1;
+  });
 
   UI.addLog(
-    `PAPER TRADE: Buy ${sp.side} on ${position.buyPlat}, ` +
-    `sell on ${position.sellPlat} — exp. +$${expectedPnl.toFixed(2)}`,
+    `PAPER TRADE: ${sp.side} — buy ${PLATFORMS[sp.buyPlat]?.name}, sell ${PLATFORMS[sp.sellPlat]?.name} · exp +$${(sp.maxProfit*stake).toFixed(2)}`,
     'success'
   );
 
@@ -191,15 +167,39 @@ function doExecuteTrade(opp) {
   UI.renderPositions(STATE);
 
   const btn = document.getElementById('executeBtn');
-  btn.textContent = '✓ Placed';
-  btn.disabled = true;
-  setTimeout(() => {
-    btn.textContent = 'Paper trade';
-    btn.disabled = false;
-  }, 2500);
+  if (btn) { btn.textContent = '✓ Placed'; btn.disabled = true; }
+  setTimeout(() => { if (btn) { btn.textContent = 'Paper trade'; btn.disabled = false; } }, 2500);
 }
 
-/* ── Live price simulation (paper mode) ── */
+/* ── Close positions (simulate resolution) ── */
+function simulateCloseOne(posId) {
+  const idx = STATE.positions.findIndex(p => p.id === posId);
+  if (idx === -1) return;
+  STATE.positions[idx] = Engine.simulateClose(STATE.positions[idx]);
+  const p = STATE.positions[idx];
+  UI.addLog(
+    `CLOSED: ${p.market.substring(0,40)}… → actual P&L ${p.actualPnl >= 0 ? '+' : ''}$${p.actualPnl.toFixed(2)}`,
+    p.actualPnl >= 0 ? 'success' : 'warn'
+  );
+  UI.updateMetrics(STATE);
+  UI.renderPositions(STATE);
+  UI.renderDashboard(STATE);
+}
+
+function simulateCloseAll() {
+  STATE.positions
+    .filter(p => p.status === 'open')
+    .forEach(p => {
+      const idx = STATE.positions.indexOf(p);
+      STATE.positions[idx] = Engine.simulateClose(p);
+    });
+  UI.addLog('Closed all open positions (simulated resolution)', 'warn');
+  UI.updateMetrics(STATE);
+  UI.renderPositions(STATE);
+  UI.renderDashboard(STATE);
+}
+
+/* ── Live price simulation ── */
 setInterval(() => {
   if (!STATE.opps.length) return;
   STATE.opps.forEach(Engine.simulatePriceJitter);
@@ -211,8 +211,26 @@ setInterval(() => {
   UI.addLog('PriceAgent → prices updated (' + STATE.opps.length + ' markets)', 'info');
 }, 8000);
 
-/* ── Expose globals for inline onclick handlers ── */
-window.runScan      = runScan;
-window.analyseDeep  = analyseDeep;
-window.executeTrade = executeTrade;
-window.confirmTrade = confirmTrade;
+/* ── Countdown refresh every 30 s ── */
+setInterval(() => {
+  if (!STATE.opps.length) return;
+  // Re-filter in case any market just expired
+  const hours = Engine.TIME_WINDOWS[STATE.timeWindowIdx].hours;
+  STATE.filteredOpps = isFinite(hours) ? Engine.filterByWindow(STATE.opps, hours) : null;
+  UI.renderOpps(STATE, selectOpp);
+  UI.updateMetrics(STATE);
+}, 30000);
+
+/* ── Init ── */
+(function init() {
+  UI.buildTimeWindowSelect();
+})();
+
+/* ── Globals ── */
+window.runScan           = runScan;
+window.applyTimeWindow   = applyTimeWindow;
+window.analyseDeep       = analyseDeep;
+window.executeTrade      = executeTrade;
+window.confirmTrade      = confirmTrade;
+window.simulateCloseOne  = simulateCloseOne;
+window.simulateCloseAll  = simulateCloseAll;

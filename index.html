@@ -18,23 +18,24 @@
         <span class="mode-badge">PAPER TRADING</span>
       </div>
       <div class="topbar-right">
-        <button class="nav-btn active" onclick="showTab('opps')">Opportunities</button>
-        <button class="nav-btn" onclick="showTab('positions')">Positions</button>
-        <button class="nav-btn" onclick="showTab('log')">Agent Log</button>
+        <button class="nav-btn active" data-tab="opps"       onclick="showTab('opps')">Opportunities</button>
+        <button class="nav-btn"        data-tab="positions"  onclick="showTab('positions')">Positions</button>
+        <button class="nav-btn"        data-tab="dashboard"  onclick="showTab('dashboard')">Dashboard</button>
+        <button class="nav-btn"        data-tab="log"        onclick="showTab('log')">Agent Log</button>
       </div>
     </div>
 
     <!-- METRICS ROW -->
     <div class="metrics-row">
       <div class="metric">
-        <span class="metric-label">Paper P&amp;L</span>
+        <span class="metric-label">Realised P&amp;L</span>
         <span class="metric-value up" id="pnl">+$0.00</span>
-        <span class="metric-change neutral" id="pnlChange">0 trades</span>
+        <span class="metric-change neutral" id="pnlChange">0 closed</span>
       </div>
       <div class="metric">
         <span class="metric-label">Open Positions</span>
         <span class="metric-value" id="openPos">0</span>
-        <span class="metric-change neutral">paper</span>
+        <span class="metric-change neutral" id="openPosChange">paper</span>
       </div>
       <div class="metric">
         <span class="metric-label">Markets Scanned</span>
@@ -44,29 +45,38 @@
       <div class="metric">
         <span class="metric-label">Opportunities</span>
         <span class="metric-value" id="oppCount">0</span>
-        <span class="metric-change neutral">found today</span>
+        <span class="metric-change neutral" id="oppCountChange">visible</span>
       </div>
       <div class="metric">
-        <span class="metric-label">Avg Identity Score</span>
-        <span class="metric-value" id="avgId">—</span>
-        <span class="metric-change neutral">match quality</span>
+        <span class="metric-label">Win Rate</span>
+        <span class="metric-value" id="winRate">—</span>
+        <span class="metric-change neutral" id="winRateChange">closed trades</span>
       </div>
     </div>
 
-    <!-- OPPORTUNITIES TAB -->
+    <!-- ══ OPPORTUNITIES TAB ══ -->
     <div id="tabOpps">
       <div class="main">
-        <!-- LEFT: opportunity list -->
+        <!-- LEFT: list + filter bar -->
         <div class="left-panel">
           <div class="panel-header">
             <span class="panel-title">Live Opportunities</span>
-            <button class="scan-btn" id="scanBtn" onclick="runScan()">
-              <span id="scanIcon">⟳</span> Scan markets
-            </button>
+            <div style="display:flex;align-items:center;gap:8px">
+              <!-- Time-window filter -->
+              <div class="filter-group">
+                <span class="filter-label">Closes in</span>
+                <select id="timeWindowSelect" class="filter-select" onchange="applyTimeWindow(this.value)">
+                  <!-- populated by JS -->
+                </select>
+              </div>
+              <button class="scan-btn" id="scanBtn" onclick="runScan()">
+                <span id="scanIcon">⟳</span> Scan
+              </button>
+            </div>
           </div>
           <div class="opps-list" id="oppsList">
             <div class="empty-state">
-              Click <strong>Scan markets</strong> to start<br />the multi-agent scanner.
+              Click <strong>Scan</strong> to start<br />the multi-agent scanner.
             </div>
           </div>
         </div>
@@ -90,30 +100,41 @@
 
       <!-- AGENT LOG (mini) -->
       <div class="log-panel">
-        <div class="panel-header">
-          <span class="panel-title">Agent log</span>
-        </div>
+        <div class="panel-header"><span class="panel-title">Agent log</span></div>
         <div class="log-list" id="logList">
-          <div class="log-entry">
-            <span class="log-time">—</span>
-            <span>ArbScout ready. Click Scan to begin.</span>
-          </div>
+          <div class="log-entry"><span class="log-time">—</span><span>ArbScout ready. Click Scan to begin.</span></div>
         </div>
       </div>
     </div>
 
-    <!-- POSITIONS TAB -->
+    <!-- ══ POSITIONS TAB ══ -->
     <div id="tabPositions" style="display:none; padding:14px">
       <div class="panel-header" style="margin:-14px -14px 14px; padding:8px 14px">
-        <span class="panel-title">Paper Positions</span>
-        <span class="status-label" id="posCount">0 open</span>
+        <span class="panel-title">Open Positions</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="status-label" id="posCount">0 open</span>
+          <button class="scan-btn" onclick="simulateCloseAll()" id="closeAllBtn" style="display:none">Simulate close all</button>
+        </div>
       </div>
       <div id="positionsContent">
         <div class="empty-state">No paper trades placed yet.</div>
       </div>
     </div>
 
-    <!-- LOG TAB -->
+    <!-- ══ DASHBOARD TAB ══ -->
+    <div id="tabDashboard" style="display:none; padding:14px">
+      <div class="panel-header" style="margin:-14px -14px 14px; padding:8px 14px">
+        <span class="panel-title">Performance Dashboard</span>
+        <span class="status-label" id="dashSubtitle">No closed trades yet</span>
+      </div>
+      <div id="dashContent">
+        <div class="empty-state">
+          Place paper trades and close positions<br />to see your performance here.
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ LOG TAB ══ -->
     <div id="tabLog" style="display:none; padding:14px">
       <div class="panel-header" style="margin:-14px -14px 14px; padding:8px 14px">
         <span class="panel-title">Full Agent Log</span>
@@ -127,7 +148,7 @@
     <div id="modalOverlay" class="modal-overlay" style="display:none">
       <div class="modal">
         <div class="modal-title" id="modalTitle">Confirm paper trade</div>
-        <div class="modal-body" id="modalBody">—</div>
+        <div class="modal-body"  id="modalBody">—</div>
         <div class="modal-btns">
           <button class="action-btn" onclick="closeModal()">Cancel</button>
           <button class="action-btn primary" onclick="confirmTrade()">Confirm</button>

@@ -1,10 +1,8 @@
 /**
  * markets.js — Platform definitions and seed market data.
  *
- * To connect real APIs:
- *   1. Add your API keys to config.apiKeys below (or use env vars via a build step)
- *   2. Replace SEED_MARKETS with a call to fetchLiveMarkets()
- *   3. Implement each platform's fetchMarkets() fn in src/api/ (see README)
+ * All markets use future resolution dates (relative to now) so the
+ * time-window filter works correctly in paper-trading mode.
  */
 
 window.PLATFORMS = {
@@ -15,106 +13,147 @@ window.PLATFORMS = {
   predictit:  { name: 'PredictIt',  fee: 0.05, color: '#dc2626', url: 'https://predictit.org' },
 };
 
-/**
- * API keys — populate these when going live.
- * In production use environment variables / a backend proxy.
- */
 window.API_KEYS = {
-  polymarket: '',   // CLOB API key
-  kalshi:     '',   // REST API key
-  predictit:  '',   // Credentials
+  polymarket: '',
+  kalshi:     '',
+  predictit:  '',
 };
 
 /**
- * SEED_MARKETS — used in paper-trading / demo mode.
- * Schema per market:
- *   id, title, category, resolution (ISO date), platforms, clauses, clauseFlags, identityScores
- *
- * platforms[key]: { yes (0–1), no (0–1), liquidity ($), volume ($) }
- * identityScores: { titleMatch, resolutionLogic, resolveDate, oracle, currency }  — all 0–1
+ * resolutionTs(hoursFromNow) — helper so seed data stays valid regardless
+ * of when the file is loaded.
  */
+function resolutionTs(hoursFromNow) {
+  return new Date(Date.now() + hoursFromNow * 3600 * 1000).toISOString();
+}
+
 window.SEED_MARKETS = [
+  // ── closes in ~45 min ──────────────────────────────────────────────────
   {
     id: 'm1',
-    title: 'Will the Fed cut rates by June 2025?',
-    category: 'Macro',
+    title: 'Will BTC stay above $68k at next hourly close?',
+    category: 'Crypto',
+    resolutionTs: () => resolutionTs(0.75),
     platforms: {
-      polymarket: { yes: 0.44, no: 0.56, liquidity: 180000, volume: 420000 },
-      kalshi:     { yes: 0.38, no: 0.62, liquidity:  95000, volume: 210000 },
+      polymarket: { yes: 0.61, no: 0.39, liquidity: 95000,  volume: 310000 },
+      kalshi:     { yes: 0.54, no: 0.46, liquidity: 48000,  volume: 140000 },
     },
-    resolution: '2025-06-30',
     clauses: {
-      polymarket: 'Resolves YES if FOMC announces a rate reduction of ≥25bps before June 30 2025. Relies on official FOMC statements. No partial resolution. UMA arbitration.',
-      kalshi:     'Resolves YES if the federal funds target rate (upper bound) is lower than current rate at any FOMC meeting on or before June 30 2025. CFTC regulated.',
+      polymarket: 'Resolves YES if BTC/USD on Coinbase Pro is ≥$68,000 at the close of the next full UTC hour. UMA arbitration.',
+      kalshi:     'Resolves YES if BTC/USD mark price on Kalshi feed is ≥$68,000 at the top of the next UTC hour. CFTC regulated.',
     },
     clauseFlags: [
-      '⚠ Resolution oracle differs (UMA vs CFTC)',
-      '✓ Both require ≥25bps cut',
-      '✓ Same event trigger (FOMC meeting)',
+      '⚠ Different price feeds (Coinbase vs Kalshi mark)',
+      '✓ Same threshold ($68k)',
+      '✓ Same resolution trigger (hourly UTC close)',
     ],
-    identityScores: { titleMatch: 0.92, resolutionLogic: 0.88, resolveDate: 1.00, oracle: 0.55, currency: 1.00 },
+    identityScores: { titleMatch: 0.93, resolutionLogic: 0.85, resolveDate: 0.98, oracle: 0.60, currency: 1.00 },
   },
+  // ── closes in ~2 h ────────────────────────────────────────────────────
   {
     id: 'm2',
-    title: 'Bitcoin above $100k end of 2024?',
+    title: 'Will ETH/BTC ratio exceed 0.055 today?',
     category: 'Crypto',
+    resolutionTs: () => resolutionTs(2.1),
     platforms: {
-      polymarket: { yes: 0.71, no: 0.29, liquidity: 320000, volume: 980000 },
-      manifold:   { yes: 0.58, no: 0.42, liquidity:   4200, volume:  18000 },
+      polymarket: { yes: 0.38, no: 0.62, liquidity: 72000,  volume: 185000 },
+      manifold:   { yes: 0.29, no: 0.71, liquidity:  3800,  volume:  11000 },
     },
-    resolution: '2024-12-31',
     clauses: {
-      polymarket: 'Resolves YES if BTC/USD spot price on Coinbase Pro is ≥$100,000 at 11:59pm UTC on Dec 31 2024. Uses Coinbase Pro feed only.',
-      manifold:   'Resolves YES if Bitcoin price exceeds $100k USD according to CoinGecko at any point before Jan 1 2025.',
+      polymarket: 'Resolves YES if ETH/BTC spot ratio on Coinbase Pro exceeds 0.055 at any point before 23:59 UTC today. UMA arbitration.',
+      manifold:   'Resolves YES if ETH/BTC on CoinGecko exceeds 0.055 at any point today (UTC). Community resolution.',
     },
     clauseFlags: [
       '⚠ Different price feeds (Coinbase vs CoinGecko)',
-      '⚠ Manifold resolves on ANY point; Polymarket on EOD close',
-      '⚠ Manifold is play-money only — no real USD value',
+      '⚠ Manifold is play-money — no real USD payout',
+      '✓ Same threshold and direction',
     ],
-    identityScores: { titleMatch: 0.95, resolutionLogic: 0.60, resolveDate: 0.90, oracle: 0.30, currency: 0.10 },
+    identityScores: { titleMatch: 0.94, resolutionLogic: 0.72, resolveDate: 0.95, oracle: 0.35, currency: 0.10 },
   },
+  // ── closes in ~6 h ────────────────────────────────────────────────────
   {
     id: 'm3',
-    title: 'US unemployment above 4.5% in Q1 2025?',
-    category: 'Economics',
+    title: 'Will US CPI print come in below 3.1% today?',
+    category: 'Macro',
+    resolutionTs: () => resolutionTs(5.8),
     platforms: {
-      kalshi:     { yes: 0.22, no: 0.78, liquidity: 65000, volume: 145000 },
-      polymarket: { yes: 0.17, no: 0.83, liquidity: 48000, volume:  88000 },
+      kalshi:     { yes: 0.44, no: 0.56, liquidity: 130000, volume: 390000 },
+      polymarket: { yes: 0.37, no: 0.63, liquidity:  88000, volume: 260000 },
     },
-    resolution: '2025-03-31',
     clauses: {
-      kalshi:     'Resolves YES if BLS reports U-3 unemployment rate ≥4.5% for any month with initial release before April 15 2025. Regulated event contract.',
-      polymarket: 'Resolves YES if BLS U-3 unemployment rate ≥4.5% for any month in Q1 2025 per initial BLS release. UMA arbitration.',
+      kalshi:     'Resolves YES if BLS CPI-U YoY initial release today is below 3.1%. CFTC regulated event contract.',
+      polymarket: 'Resolves YES if BLS headline CPI YoY (initial release) is <3.1% per official BLS release today. UMA arbitration.',
     },
     clauseFlags: [
-      '✓ Both use BLS U-3 — strong match',
-      '⚠ Kalshi deadline April 15 vs Polymarket unspecified',
-      '✓ Same threshold (4.5%)',
+      '✓ Both use BLS headline CPI-U',
+      '✓ Same threshold (<3.1%)',
+      '⚠ Resolution oracle differs (CFTC vs UMA)',
     ],
-    identityScores: { titleMatch: 0.97, resolutionLogic: 0.93, resolveDate: 0.95, oracle: 0.80, currency: 1.00 },
+    identityScores: { titleMatch: 0.96, resolutionLogic: 0.92, resolveDate: 1.00, oracle: 0.70, currency: 1.00 },
   },
+  // ── closes in ~12 h ───────────────────────────────────────────────────
   {
     id: 'm4',
-    title: 'Will there be a US recession in 2025?',
-    category: 'Macro',
+    title: 'Will S&P 500 close green today?',
+    category: 'Equities',
+    resolutionTs: () => resolutionTs(11.5),
     platforms: {
-      polymarket: { yes: 0.35, no: 0.65, liquidity: 220000, volume: 510000 },
-      metaculus:  { yes: 0.28, no: 0.72, liquidity:       0, volume:      0 },
-      predictit:  { yes: 0.41, no: 0.59, liquidity:  88000, volume: 190000 },
+      polymarket: { yes: 0.55, no: 0.45, liquidity: 210000, volume: 580000 },
+      kalshi:     { yes: 0.49, no: 0.51, liquidity: 155000, volume: 420000 },
+      predictit:  { yes: 0.57, no: 0.43, liquidity:  62000, volume: 170000 },
     },
-    resolution: '2025-12-31',
     clauses: {
-      polymarket: 'Resolves YES if NBER officially declares a recession beginning in 2025 by Dec 31 2026 (18-month resolution window). USDC payout.',
-      metaculus:  'Resolves YES if GDP declines for two consecutive quarters OR NBER recession declaration. Metaculus community resolves.',
-      predictit:  'Resolves YES if NBER announces recession start in 2025. $850 position limit per contract.',
+      polymarket: 'Resolves YES if S&P 500 closing price today is higher than yesterday\'s close per NYSE official close. UMA arbitration.',
+      kalshi:     'Resolves YES if SPX official closing level today exceeds prior day close per S&P Dow Jones Indices. CFTC regulated.',
+      predictit:  'Resolves YES if SPY ETF closing price is above prior close per Yahoo Finance EOD. $850 position cap.',
     },
     clauseFlags: [
-      '⚠ Metaculus uses GDP OR NBER — broader definition',
-      '⚠ Metaculus has no real USD payout (points only for non-US traders)',
-      '⚠ PredictIt $850 cap limits position size',
-      '⚠ Resolution timeline differs significantly',
+      '⚠ Polymarket/Kalshi use SPX index; PredictIt uses SPY ETF',
+      '⚠ PredictIt $850 position cap limits size',
+      '✓ All resolve on same-day US market close',
     ],
-    identityScores: { titleMatch: 0.89, resolutionLogic: 0.55, resolveDate: 0.70, oracle: 0.50, currency: 0.75 },
+    identityScores: { titleMatch: 0.91, resolutionLogic: 0.78, resolveDate: 1.00, oracle: 0.65, currency: 0.85 },
+  },
+  // ── closes in ~24 h ───────────────────────────────────────────────────
+  {
+    id: 'm5',
+    title: 'Will Fed announce rate hold at tomorrow\'s meeting?',
+    category: 'Macro',
+    resolutionTs: () => resolutionTs(23.5),
+    platforms: {
+      polymarket: { yes: 0.82, no: 0.18, liquidity: 340000, volume: 920000 },
+      kalshi:     { yes: 0.79, no: 0.21, liquidity: 195000, volume: 510000 },
+    },
+    clauses: {
+      polymarket: 'Resolves YES if FOMC statement tomorrow announces no change to federal funds target rate. UMA arbitration.',
+      kalshi:     'Resolves YES if FOMC holds the federal funds rate at current level per official FOMC press release. CFTC regulated.',
+    },
+    clauseFlags: [
+      '✓ Identical event trigger (FOMC hold)',
+      '✓ Same data source (official FOMC statement)',
+      '⚠ Oracle differs (UMA vs CFTC)',
+    ],
+    identityScores: { titleMatch: 0.97, resolutionLogic: 0.95, resolveDate: 1.00, oracle: 0.72, currency: 1.00 },
+  },
+  // ── closes in ~72 h ───────────────────────────────────────────────────
+  {
+    id: 'm6',
+    title: 'Will BTC reach $75k before end of week?',
+    category: 'Crypto',
+    resolutionTs: () => resolutionTs(71),
+    platforms: {
+      polymarket: { yes: 0.23, no: 0.77, liquidity: 280000, volume: 740000 },
+      kalshi:     { yes: 0.19, no: 0.81, liquidity: 110000, volume: 295000 },
+    },
+    clauses: {
+      polymarket: 'Resolves YES if BTC/USD touches or exceeds $75,000 on Coinbase Pro at any point before Sunday 23:59 UTC. UMA arbitration.',
+      kalshi:     'Resolves YES if BTC/USD mark price on Kalshi reaches $75,000 at any point before end of week (Sunday 23:59 UTC). CFTC regulated.',
+    },
+    clauseFlags: [
+      '⚠ Different feeds (Coinbase spot vs Kalshi mark)',
+      '✓ Same target price ($75k)',
+      '✓ Same resolution window (end of week)',
+    ],
+    identityScores: { titleMatch: 0.95, resolutionLogic: 0.87, resolveDate: 0.97, oracle: 0.58, currency: 1.00 },
   },
 ];
